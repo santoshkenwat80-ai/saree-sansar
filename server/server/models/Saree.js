@@ -1,160 +1,235 @@
+
 import mongoose, { Schema } from "mongoose";
+
 const SareeSchema = new Schema(
   {
+    // Basic Information
     name: {
       type: String,
       required: [true, "Saree name is required"],
       trim: true,
-      index: true
+      maxlength: [150, "Saree name cannot exceed 150 characters"],
+      index: true,
     },
+
     slug: {
       type: String,
-      required: true,
+      required: [true, "Saree slug is required"],
       unique: true,
-      trim: true,
       lowercase: true,
-      index: true
+      trim: true,
+      index: true,
     },
+
     description: {
       type: String,
-      required: [true, "Saree description is required"]
+      required: [true, "Saree description is required"],
+      trim: true,
     },
+
+    // Price Information
     price: {
       type: Number,
-      required: [true, "Price is required"],
-      min: [0, "Price must be positive"]
+      required: [true, "Selling price is required"],
+      min: [0, "Price cannot be negative"],
     },
+
     originalPrice: {
       type: Number,
-      required: true,
-      min: 0
+      required: [true, "Original price is required"],
+      min: [0, "Original price cannot be negative"],
     },
+
     discountPercent: {
       type: Number,
       default: 0,
       min: 0,
-      max: 100
+      max: 100,
     },
+
+    // Saree Details
     fabricType: {
       type: String,
       required: [true, "Fabric type is required"],
+      trim: true,
       index: true,
-      trim: true
     },
+
+    weavingTechnique: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     artisan: {
       type: String,
-      required: [true, "Artisan or master weaver information is required"],
-      default: "Heritage Handloom Guild, Varanasi Looms",
-      trim: true
+      trim: true,
+      default: "Traditional Indian Artisan",
     },
-    inventoryStatus: {
-      type: String,
-      enum: {
-        values: ["IN_STOCK", "LOW_STOCK", "OUT_OF_STOCK", "MADE_TO_ORDER"],
-        message: "{VALUE} is not a valid inventory status"
-      },
-      default: "IN_STOCK",
-      index: true
-    },
+
     category: {
       type: String,
-      required: true,
+      required: [true, "Category is required"],
+      trim: true,
+      lowercase: true,
+      default: "banarasi-silk",
       index: true,
-      default: "banarasi-silk"
     },
+
     color: {
       type: String,
-      required: true,
-      default: "Royal Crimson Maroon & Gold"
+      required: [true, "Color is required"],
+      trim: true,
+      default: "Red",
     },
+
     colorHex: {
       type: String,
-      default: "#881930"
+      default: "#881930",
+      trim: true,
     },
+
     occasion: {
       type: String,
-      default: "Bridal & Festive"
+      trim: true,
+      default: "Festive",
     },
+
+    // Inventory Information
     stock: {
       type: Number,
       required: true,
-      min: 0,
-      default: 10
+      min: [0, "Stock cannot be negative"],
+      default: 10,
     },
+
+    inventoryStatus: {
+      type: String,
+      enum: [
+        "IN_STOCK",
+        "LOW_STOCK",
+        "OUT_OF_STOCK",
+        "MADE_TO_ORDER",
+      ],
+      default: "IN_STOCK",
+      index: true,
+    },
+
     sku: {
       type: String,
-      required: true,
+      required: [true, "SKU is required"],
       unique: true,
       trim: true,
-      uppercase: true
+      uppercase: true,
     },
+
+    // Images
     images: {
       type: [String],
-      default: ["/src/assets/images/hero_banarasi_bridal_1791698980254.jpg"]
+      default: [],
     },
+
+    // Additional Information
     silkMarkCertified: {
       type: Boolean,
-      default: true
+      default: false,
     },
+
     zariType: {
       type: String,
-      default: "Tested Pure Gold & Silver Zari"
+      trim: true,
+      default: "",
     },
+
     blousePieceIncluded: {
       type: Boolean,
-      default: true
+      default: true,
     },
+
     sareeLength: {
       type: String,
-      default: "5.5 meters saree + 0.8 meter blouse piece"
+      default: "5.5 meters saree + 0.8 meter blouse piece",
     },
+
     careInstructions: {
       type: String,
-      default: "Dry clean only. Store in muslin cloth with cedar balls."
+      default: "Dry clean only",
     },
+
+    // Reviews
     rating: {
       type: Number,
-      default: 5,
-      min: 1,
-      max: 5
+      default: 0,
+      min: [0, "Rating cannot be less than 0"],
+      max: [5, "Rating cannot exceed 5"],
     },
+
     reviewsCount: {
       type: Number,
-      default: 1
+      default: 0,
+      min: 0,
     },
+
+    // Product Categories / Flags
     isFeatured: {
       type: Boolean,
-      default: true
+      default: false,
     },
+
     isBestSeller: {
       type: Boolean,
-      default: false
+      default: false,
     },
+
     isNewArrival: {
       type: Boolean,
-      default: true
+      default: true,
     },
+
+    // Flexible Specifications
     specifications: {
       type: Map,
       of: String,
-      default: {}
-    }
+      default: {},
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
+    versionKey: false,
+    collection: "sarees",
   }
 );
-SareeSchema.pre("save", function() {
-  if (this.originalPrice && this.originalPrice > this.price) {
-    this.discountPercent = Math.round((this.originalPrice - this.price) / this.originalPrice * 100);
-  }
-  if (this.stock === 0) {
-    this.inventoryStatus = "OUT_OF_STOCK";
-  } else if (this.stock <= 5) {
-    this.inventoryStatus = "LOW_STOCK";
+
+// Automatically calculate discount and stock status
+SareeSchema.pre("validate", function () {
+  if (
+    this.originalPrice > 0 &&
+    this.originalPrice > this.price
+  ) {
+    this.discountPercent = Math.round(
+      ((this.originalPrice - this.price) /
+        this.originalPrice) *
+        100
+    );
   } else {
-    this.inventoryStatus = "IN_STOCK";
+    this.discountPercent = 0;
+  }
+
+  // Preserve MADE_TO_ORDER when explicitly selected
+  if (this.inventoryStatus !== "MADE_TO_ORDER") {
+    if (this.stock === 0) {
+      this.inventoryStatus = "OUT_OF_STOCK";
+    } else if (this.stock <= 5) {
+      this.inventoryStatus = "LOW_STOCK";
+    } else {
+      this.inventoryStatus = "IN_STOCK";
+    }
   }
 });
-export const Saree = mongoose.models.Saree || mongoose.model("Saree", SareeSchema);
+
+// Export Model
+export const Saree =
+  mongoose.models.Saree ||
+  mongoose.model("Saree", SareeSchema);
+
 export default Saree;
