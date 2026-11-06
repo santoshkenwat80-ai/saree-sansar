@@ -70,6 +70,7 @@ const normalizeProduct = (p) => ({
 // 2. GET ALL PRODUCTS
 // ==========================================
 
+
 router.get("/", async (req, res) => {
   try {
     const {
@@ -83,36 +84,81 @@ router.get("/", async (req, res) => {
       inStockOnly,
       weavingTechnique,
       technique,
-      artisan
+      artisan,
     } = req.query;
 
-    let list = [...(db.products || [])];
+    let list = [];
 
-    // MongoDB products first
     if (isMongoConnected()) {
-      let mongoProducts = await Product.find({}).lean();
+      // Fetch both collections together
+      const [mongoProducts, mongoSarees] = await Promise.all([
+        Product.find({})
+          .lean()
+          .maxTimeMS(8000),
 
-      // If Product collection is empty, check Saree collection
-      if (!mongoProducts.length) {
-        mongoProducts = await Saree.find({}).lean();
+        Saree.find({})
+          .lean()
+          .maxTimeMS(8000),
+      ]);
+
+      // Merge both collections using SKU
+      const productMap = new Map();
+
+      // Add Sarees first
+      for (const saree of mongoSarees) {
+        const key = saree.sku
+          ? String(saree.sku).trim().toUpperCase()
+          : `saree-${saree._id}`;
+
+        productMap.set(key, normalizeProduct(saree));
       }
 
-      if (mongoProducts.length) {
-        list = mongoProducts.map(normalizeProduct);
+      // Add Products and merge matching SKU
+      for (const product of mongoProducts) {
+        const key = product.sku
+          ? String(product.sku).trim().toUpperCase()
+          : `product-${product._id}`;
+
+        const existingSaree = productMap.get(key) || {};
+
+        const merged = normalizeProduct({
+          ...existingSaree,
+          ...product,
+          fabric:
+            product.fabric ||
+            product.fabricType ||
+            existingSaree.fabric ||
+            "",
+          images:
+            product.images?.length
+              ? product.images
+              : existingSaree.images || [],
+        });
+
+        productMap.set(key, merged);
       }
+
+      list = Array.from(productMap.values());
+
+      console.log(
+        `[Products API] Products: ${mongoProducts.length}, Sarees: ${mongoSarees.length}, Total: ${list.length}`
+      );
+    } else {
+      list = (db.products || []).map(normalizeProduct);
     }
 
     // Category filter
     if (category && category !== "all") {
       list = list.filter(
-        p => (p.category || "").toLowerCase() ===
-          category.toLowerCase()
+        p =>
+          String(p.category || "").toLowerCase() ===
+          String(category).toLowerCase()
       );
     }
 
     // Search filter
     if (search) {
-      const q = search.toLowerCase().trim();
+      const q = String(search).toLowerCase().trim();
 
       list = list.filter(p => {
         const searchable = [
@@ -126,7 +172,7 @@ router.get("/", async (req, res) => {
           p.specifications?.Weave,
           p.artisan,
           p.specifications?.Artisan,
-          p.specifications?.Origin
+          p.specifications?.Origin,
         ];
 
         return searchable.some(value =>
@@ -139,7 +185,7 @@ router.get("/", async (req, res) => {
     const targetTechnique = weavingTechnique || technique;
 
     if (targetTechnique && targetTechnique !== "all") {
-      const tq = targetTechnique.toLowerCase().trim();
+      const tq = String(targetTechnique).toLowerCase().trim();
 
       list = list.filter(p =>
         String(p.weavingTechnique || "").toLowerCase().includes(tq) ||
@@ -150,7 +196,7 @@ router.get("/", async (req, res) => {
 
     // Artisan filter
     if (artisan && artisan !== "all") {
-      const art = artisan.toLowerCase().trim();
+      const art = String(artisan).toLowerCase().trim();
 
       list = list.filter(p =>
         String(p.artisan || "").toLowerCase().includes(art) ||
@@ -163,26 +209,32 @@ router.get("/", async (req, res) => {
     // Fabric filter
     if (fabric && fabric !== "all") {
       list = list.filter(
-        p => (p.fabric || p.fabricType || "").toLowerCase() ===
-          fabric.toLowerCase()
+        p =>
+          String(p.fabric || p.fabricType || "").toLowerCase() ===
+          String(fabric).toLowerCase()
       );
     }
 
     // Occasion filter
     if (occasion && occasion !== "all") {
       list = list.filter(
-        p => (p.occasion || "").toLowerCase() ===
-          occasion.toLowerCase()
+        p =>
+          String(p.occasion || "").toLowerCase() ===
+          String(occasion).toLowerCase()
       );
     }
 
     // Price filters
     if (minPrice !== undefined && minPrice !== "") {
-      list = list.filter(p => p.price >= Number(minPrice));
+      list = list.filter(
+        p => p.price >= Number(minPrice)
+      );
     }
 
     if (maxPrice !== undefined && maxPrice !== "") {
-      list = list.filter(p => p.price <= Number(maxPrice));
+      list = list.filter(
+        p => p.price <= Number(maxPrice)
+      );
     }
 
     // Stock filter
@@ -220,15 +272,15 @@ router.get("/", async (req, res) => {
         break;
     }
 
-    return res.json(list);
+    return res.status(200).json(list);
 
   } catch (error) {
-    console.error("GET Products Error:", error);
+    console.error("[GET PRODUCTS ERROR]", error);
 
     return res.status(500).json({
       success: false,
-      message: "Products load failed",
-      error: error.message
+      message: "Products could not be loaded",
+      error: error.message,
     });
   }
 });
