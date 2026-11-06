@@ -1,254 +1,634 @@
+
 import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
-import { Product } from '../models/Product.js';
-import { Saree } from '../models/Saree.js';
-import { Category } from '../models/Category.js';
-import { User } from '../models/User.js';
-import { Order } from '../models/Order.js';
-import { Coupon } from '../models/Coupon.js';
-import { db } from '../db.js';
-export { Saree };
+
+import { Product } from "../models/Product.js";
+import { Saree } from "../models/Saree.js";
+import { Category } from "../models/Category.js";
+import { User } from "../models/User.js";
+import { Order } from "../models/Order.js";
+import { Coupon } from "../models/Coupon.js";
+
+import { db } from "../db.js";
+
+// =====================================================
+// MONGODB CONNECTION STATE
+// =====================================================
+
 let isConnected = false;
+let connectionPromise = null;
+
+export { Saree };
+
 export function isMongoConnected() {
-  return isConnected && mongoose.connection.readyState === 1;
+  return (
+    isConnected &&
+    mongoose.connection.readyState === 1
+  );
 }
+
+// =====================================================
+// MONGODB CONNECTION
+// =====================================================
+
 export async function connectMongoDB() {
   const mongoUri = process.env.MONGO_URI;
-  if (!mongoUri) {
-    console.log("\u2139\uFE0F [MERN Stack] No MONGO_URI in .env. Using persistent local JSON database (data/database.json).");
+
+  if (!mongoUri || !mongoUri.trim()) {
+    console.warn(
+      "[MongoDB] MONGO_URI not found. MongoDB connection skipped."
+    );
+
+    isConnected = false;
     return false;
   }
-  return await connectMongoDBWithUri(mongoUri, false);
+
+  return connectMongoDBWithUri(mongoUri, false);
 }
-export async function connectMongoDBWithUri(mongoUri, updateEnvFile = true) {
+
+export async function connectMongoDBWithUri(
+  mongoUri,
+  updateEnvFile = true
+) {
   if (!mongoUri || !mongoUri.trim()) {
     throw new Error("MongoDB URI cannot be empty");
   }
-  const cleanUri = mongoUri.trim();
-  try {
-    console.log("\u23F3 [MERN Stack] Connecting to MongoDB Atlas (Database: saree_sansar)...");
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.disconnect();
-    }
-    await mongoose.connect(cleanUri, {
-      dbName: "saree_sansar",
-      serverSelectionTimeoutMS: 8e3
-    });
+
+  // Already connected
+  if (mongoose.connection.readyState === 1) {
     isConnected = true;
-    process.env.MONGO_URI = cleanUri;
-    console.log("\u2705 [MERN Stack] Connected to MongoDB Atlas! Database: saree_sansar");
-    if (updateEnvFile) {
-      saveUriToEnv(cleanUri);
-    }
-    await seedMongoDBIfEmpty();
+
     return {
       success: true,
       dbName: "saree_sansar",
       host: mongoose.connection.host,
-      message: "MongoDB Atlas connected successfully to database: saree_sansar",
-      stats: await getCollectionsCounts()
+      message: "MongoDB is already connected",
     };
-  } catch (error) {
-    console.error("\u274C [MERN Stack] MongoDB Connection Error:", error);
-    isConnected = false;
-    throw new Error(error.message || "Failed to connect to MongoDB Atlas");
   }
+
+  // Reuse existing connection attempt
+  if (connectionPromise) {
+    return connectionPromise;
+  }
+
+  const cleanUri = mongoUri.trim();
+
+  connectionPromise = (async () => {
+    try {
+      console.log(
+        "[MongoDB] Connecting to database: saree_sansar..."
+      );
+
+      await mongoose.connect(cleanUri, {
+        dbName: "saree_sansar",
+        serverSelectionTimeoutMS: 15000,
+        connectTimeoutMS: 15000,
+        socketTimeoutMS: 45000,
+        maxPoolSize: 10,
+        minPoolSize: 1,
+      });
+
+      isConnected = true;
+      process.env.MONGO_URI = cleanUri;
+
+      console.log(
+        "[MongoDB] Successfully connected to Atlas"
+      );
+
+      // Save URI only in local development
+      if (
+        updateEnvFile &&
+        process.env.NODE_ENV !== "production"
+      ) {
+        saveUriToEnv(cleanUri);
+      }
+
+      // Seed only empty collections
+      await seedMongoDBIfEmpty();
+
+      const stats = await getCollectionsCounts();
+
+      console.log("[MongoDB] Collection counts:", stats);
+
+      return {
+        success: true,
+        dbName: "saree_sansar",
+        host: mongoose.connection.host,
+        message: "MongoDB connected successfully",
+        stats,
+      };
+    } catch (error) {
+      isConnected = false;
+
+      console.error(
+        "[MongoDB] Connection Error:",
+        error.message
+      );
+
+      throw error;
+    } finally {
+      connectionPromise = null;
+    }
+  })();
+
+  return connectionPromise;
 }
+
+// =====================================================
+// CONNECTION EVENTS
+// =====================================================
+
+mongoose.connection.on("connected", () => {
+  isConnected = true;
+  console.log("[MongoDB] Connection established");
+});
+
+mongoose.connection.on("disconnected", () => {
+  isConnected = false;
+  console.warn("[MongoDB] Connection disconnected");
+});
+
+mongoose.connection.on("error", (error) => {
+  isConnected = false;
+  console.error("[MongoDB] Connection error:", error.message);
+});
+
+// =====================================================
+// DISCONNECT
+// =====================================================
+
 export async function disconnectMongoDB() {
   if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
   }
+
   isConnected = false;
-  return { success: true, message: "Disconnected from MongoDB Atlas. Now using local database." };
+  connectionPromise = null;
+
+  return {
+    success: true,
+    message: "MongoDB disconnected",
+  };
 }
+
+// =====================================================
+// DATABASE COLLECTION COUNTS
+// =====================================================
+
+async function getCollectionsCounts() {
+  const [
+    products,
+    sarees,
+    orders,
+    users,
+    categories,
+    coupons,
+  ] = await Promise.all([
+    Product.countDocuments({}),
+    Saree.countDocuments({}),
+    Order.countDocuments({}),
+    User.countDocuments({}),
+    Category.countDocuments({}),
+    Coupon.countDocuments({}),
+  ]);
+
+  return {
+    products,
+    sarees,
+    orders,
+    users,
+    categories,
+    coupons,
+  };
+}
+
+// =====================================================
+// DATABASE STATUS
+// =====================================================
+
 export async function getMongoDBStatus() {
   const readyState = mongoose.connection.readyState;
-  const connected = isConnected && readyState === 1;
+  const connected = isMongoConnected();
+
   let counts = {
-    products: db.products.length,
-    sarees: db.products.length,
-    orders: db.orders.length,
-    users: db.users.length,
-    categories: db.categories.length,
-    coupons: db.coupons.length
+    products: db.products?.length || 0,
+    sarees: 0,
+    orders: db.orders?.length || 0,
+    users: db.users?.length || 0,
+    categories: db.categories?.length || 0,
+    coupons: db.coupons?.length || 0,
   };
+
   if (connected) {
     try {
       counts = await getCollectionsCounts();
-    } catch (e) {
+    } catch (error) {
+      console.error(
+        "[MongoDB] Unable to fetch collection counts:",
+        error.message
+      );
     }
   }
+
   return {
     isConnected: connected,
     dbName: "saree_sansar",
-    host: connected ? mongoose.connection.host : "local-json-engine",
+
+    host: connected
+      ? mongoose.connection.host
+      : "not-connected",
+
     readyState,
-    statusText: connected ? "Connected to MongoDB Atlas" : "Running on Local Persistent JSON Engine",
-    activeDatabaseType: connected ? "MongoDB Atlas (Cloud)" : "Local File Database (data/database.json)",
+
+    statusText: connected
+      ? "Connected to MongoDB Atlas"
+      : "MongoDB is not connected",
+
+    activeDatabaseType: connected
+      ? "MongoDB Atlas"
+      : "Local JSON Database",
+
     hasEnvUri: Boolean(process.env.MONGO_URI),
-    maskedUri: maskMongoUri(process.env.MONGO_URI || ""),
-    collections: counts
+
+    maskedUri: maskMongoUri(
+      process.env.MONGO_URI || ""
+    ),
+
+    collections: counts,
   };
 }
-async function getCollectionsCounts() {
-  const [products, sarees, orders, users, categories, coupons] = await Promise.all([
-    Product.countDocuments().catch(() => db.products.length),
-    Saree.countDocuments().catch(() => db.products.length),
-    Order.countDocuments().catch(() => db.orders.length),
-    User.countDocuments().catch(() => db.users.length),
-    Category.countDocuments().catch(() => db.categories.length),
-    Coupon.countDocuments().catch(() => db.coupons.length)
-  ]);
-  return { products, sarees, orders, users, categories, coupons };
+
+// =====================================================
+// SEED MONGODB ONLY WHEN COLLECTION IS EMPTY
+// =====================================================
+
+async function seedMongoDBIfEmpty() {
+  try {
+    console.log("[MongoDB Seed] Checking collections...");
+
+    const [
+      productCount,
+      sareeCount,
+      categoryCount,
+      userCount,
+      orderCount,
+      couponCount,
+    ] = await Promise.all([
+      Product.countDocuments({}),
+      Saree.countDocuments({}),
+      Category.countDocuments({}),
+      User.countDocuments({}),
+      Order.countDocuments({}),
+      Coupon.countDocuments({}),
+    ]);
+
+    // Products
+    if (productCount === 0 && db.products?.length > 0) {
+      console.log("[MongoDB Seed] Importing products...");
+
+      await Product.insertMany(db.products, {
+        ordered: false,
+      });
+
+      console.log(
+        `[MongoDB Seed] ${db.products.length} products imported`
+      );
+    }
+
+    // Sarees
+    // Never overwrite existing Saree collection
+    if (sareeCount === 0 && db.products?.length > 0) {
+      console.log("[MongoDB Seed] Importing sarees...");
+
+      const sareeDocs = db.products.map((product) => ({
+        name: product.name,
+        slug: product.slug,
+        description: product.description || product.name,
+
+        price: Number(product.price || 0),
+        originalPrice: Number(
+          product.originalPrice || product.price || 0
+        ),
+
+        discountPercent: Number(
+          product.discountPercent || 0
+        ),
+
+        fabricType:
+          product.fabric ||
+          product.fabricType ||
+          "Banarasi Silk",
+
+        weavingTechnique:
+          product.weavingTechnique || "",
+
+        artisan:
+          product.artisan ||
+          "Traditional Indian Artisan",
+
+        inventoryStatus:
+          Number(product.stock || 0) === 0
+            ? "OUT_OF_STOCK"
+            : Number(product.stock || 0) <= 5
+              ? "LOW_STOCK"
+              : "IN_STOCK",
+
+        category: product.category || "banarasi-silk",
+
+        color: product.color || "Red",
+
+        colorHex: product.colorHex || "#881930",
+
+        occasion: product.occasion || "Festive",
+
+        stock: Number(product.stock ?? 10),
+
+        sku: product.sku,
+
+        images: Array.isArray(product.images)
+          ? product.images
+          : [],
+
+        silkMarkCertified:
+          product.silkMarkCertified ?? false,
+
+        zariType: product.zariType || "",
+
+        blousePieceIncluded:
+          product.blousePieceIncluded ?? true,
+
+        sareeLength:
+          product.sareeLength ||
+          "5.5 meters saree + 0.8 meter blouse piece",
+
+        careInstructions:
+          product.careInstructions || "Dry clean only",
+
+        rating: Number(product.rating || 0),
+
+        reviewsCount: Number(product.reviewsCount || 0),
+
+        isFeatured: Boolean(product.isFeatured),
+
+        isBestSeller: Boolean(product.isBestSeller),
+
+        isNewArrival: Boolean(product.isNewArrival),
+
+        specifications: product.specifications || {},
+      }));
+
+      await Saree.insertMany(sareeDocs, {
+        ordered: false,
+      });
+
+      console.log(
+        `[MongoDB Seed] ${sareeDocs.length} sarees imported`
+      );
+    }
+
+    // Categories
+    if (
+      categoryCount === 0 &&
+      db.categories?.length > 0
+    ) {
+      await Category.insertMany(db.categories, {
+        ordered: false,
+      });
+    }
+
+    // Users
+    if (userCount === 0 && db.users?.length > 0) {
+      await User.insertMany(db.users, {
+        ordered: false,
+      });
+    }
+
+    // Orders
+    if (orderCount === 0 && db.orders?.length > 0) {
+      await Order.insertMany(db.orders, {
+        ordered: false,
+      });
+    }
+
+    // Coupons
+    if (couponCount === 0 && db.coupons?.length > 0) {
+      await Coupon.insertMany(db.coupons, {
+        ordered: false,
+      });
+    }
+
+    console.log("[MongoDB Seed] Collection check completed");
+
+  } catch (error) {
+    console.error(
+      "[MongoDB Seed] Error:",
+      error.message
+    );
+
+    // Do not hide database errors
+    throw error;
+  }
 }
+
+// =====================================================
+// SYNC LOCAL JSON DATA TO MONGODB
+// =====================================================
+
 export async function syncAllDataToMongoDB() {
   if (!isMongoConnected()) {
-    throw new Error("Please connect to MongoDB Atlas first before syncing data.");
+    throw new Error(
+      "MongoDB is not connected. Connect first."
+    );
   }
-  let syncedCounts = {
+
+  const syncedCounts = {
     products: 0,
     sarees: 0,
     categories: 0,
     orders: 0,
     users: 0,
-    coupons: 0
+    coupons: 0,
   };
-  if (db.categories && db.categories.length > 0) {
-    for (const cat of db.categories) {
-      await Category.findOneAndUpdate({ slug: cat.slug }, cat, { upsert: true });
+
+  // Products and linked Sarees
+  for (const product of db.products || []) {
+    if (!product.sku) {
+      console.warn(
+        "[Sync] Product skipped because SKU is missing"
+      );
+      continue;
     }
-    syncedCounts.categories = db.categories.length;
+
+    await Product.findOneAndUpdate(
+      { sku: product.sku },
+      { $set: product },
+      {
+        upsert: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    const sareeDoc = {
+      name: product.name,
+      slug: product.slug,
+      description: product.description || product.name,
+      price: Number(product.price || 0),
+      originalPrice: Number(
+        product.originalPrice || product.price || 0
+      ),
+      discountPercent: Number(
+        product.discountPercent || 0
+      ),
+      fabricType:
+        product.fabric ||
+        product.fabricType ||
+        "Banarasi Silk",
+      artisan:
+        product.artisan || "Traditional Indian Artisan",
+      category: product.category || "banarasi-silk",
+      color: product.color || "Red",
+      stock: Number(product.stock ?? 10),
+      sku: product.sku,
+      images: product.images || [],
+      blousePieceIncluded:
+        product.blousePieceIncluded ?? true,
+      sareeLength:
+        product.sareeLength ||
+        "5.5 meters saree + 0.8 meter blouse",
+      careInstructions:
+        product.careInstructions || "Dry clean only",
+      inventoryStatus:
+        Number(product.stock || 0) === 0
+          ? "OUT_OF_STOCK"
+          : Number(product.stock || 0) <= 5
+            ? "LOW_STOCK"
+            : "IN_STOCK",
+    };
+
+    await Saree.findOneAndUpdate(
+      { sku: product.sku },
+      { $set: sareeDoc },
+      {
+        upsert: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    syncedCounts.products++;
+    syncedCounts.sarees++;
   }
-  if (db.products && db.products.length > 0) {
-    for (const prod of db.products) {
-      await Product.findOneAndUpdate({ sku: prod.sku }, prod, { upsert: true });
-      const sareeDoc = {
-        name: prod.name,
-        slug: prod.slug,
-        description: prod.description,
-        price: prod.price,
-        originalPrice: prod.originalPrice,
-        discountPercent: prod.discountPercent || 0,
-        fabricType: prod.fabric || "Banarasi Silk",
-        artisan: prod.artisan || "Master Weaver Heritage Guild, Varanasi Looms",
-        inventoryStatus: prod.stock === 0 ? "OUT_OF_STOCK" : prod.stock <= 5 ? "LOW_STOCK" : "IN_STOCK",
-        category: prod.category || "banarasi-silk",
-        color: prod.color || "Crimson Maroon & Gold",
-        stock: prod.stock,
-        sku: prod.sku,
-        images: prod.images || [],
-        silkMarkCertified: true,
-        zariType: "Tested Pure Gold & Silver Zari",
-        blousePieceIncluded: prod.blousePieceIncluded ?? true,
-        sareeLength: prod.sareeLength || "5.5 meters saree + 0.8 meter blouse",
-        careInstructions: prod.careInstructions || "Dry clean only",
-        specifications: prod.specifications || {}
-      };
-      await Saree.findOneAndUpdate({ sku: prod.sku }, sareeDoc, { upsert: true });
-    }
-    syncedCounts.products = db.products.length;
-    syncedCounts.sarees = db.products.length;
+
+  // Categories
+  for (const category of db.categories || []) {
+    await Category.findOneAndUpdate(
+      { slug: category.slug },
+      { $set: category },
+      { upsert: true }
+    );
+
+    syncedCounts.categories++;
   }
-  if (db.users && db.users.length > 0) {
-    for (const usr of db.users) {
-      await User.findOneAndUpdate({ email: usr.email }, usr, { upsert: true });
-    }
-    syncedCounts.users = db.users.length;
+
+  // Users
+  for (const user of db.users || []) {
+    await User.findOneAndUpdate(
+      { email: user.email },
+      { $set: user },
+      { upsert: true }
+    );
+
+    syncedCounts.users++;
   }
-  if (db.coupons && db.coupons.length > 0) {
-    for (const cpn of db.coupons) {
-      await Coupon.findOneAndUpdate({ code: cpn.code }, cpn, { upsert: true });
-    }
-    syncedCounts.coupons = db.coupons.length;
+
+  // Orders
+  for (const order of db.orders || []) {
+    await Order.findOneAndUpdate(
+      { orderNumber: order.orderNumber },
+      { $set: order },
+      { upsert: true }
+    );
+
+    syncedCounts.orders++;
   }
-  if (db.orders && db.orders.length > 0) {
-    for (const ord of db.orders) {
-      await Order.findOneAndUpdate({ orderNumber: ord.orderNumber }, ord, { upsert: true });
-    }
-    syncedCounts.orders = db.orders.length;
+
+  // Coupons
+  for (const coupon of db.coupons || []) {
+    await Coupon.findOneAndUpdate(
+      { code: coupon.code },
+      { $set: coupon },
+      { upsert: true }
+    );
+
+    syncedCounts.coupons++;
   }
+
   return {
     success: true,
-    message: "All catalog sarees, orders, patrons, and coupons synced to MongoDB Atlas!",
-    syncedCounts
+    message: "Database synchronization completed",
+    syncedCounts,
   };
 }
-async function seedMongoDBIfEmpty() {
-  try {
-    const [productCount, sareeCount] = await Promise.all([
-      Product.countDocuments().catch(() => 0),
-      Saree.countDocuments().catch(() => 0)
-    ]);
-    if (productCount === 0 && db.products?.length > 0) {
-      console.log("\u{1F331} [MongoDB Seed] Initializing saree_sansar collections with catalog data...");
-      if (db.categories?.length > 0) await Category.insertMany(db.categories);
-      if (db.products?.length > 0) await Product.insertMany(db.products);
-      if (db.users?.length > 0) await User.insertMany(db.users);
-      if (db.coupons?.length > 0) await Coupon.insertMany(db.coupons);
-      if (db.orders?.length > 0) await Order.insertMany(db.orders);
-    }
-    if (sareeCount === 0 && db.products?.length > 0) {
-      const sareeDocs = db.products.map((p) => ({
-        name: p.name,
-        slug: p.slug,
-        description: p.description,
-        price: p.price,
-        originalPrice: p.originalPrice,
-        discountPercent: p.discountPercent || 0,
-        fabricType: p.fabric || "Banarasi Silk",
-        artisan: p.artisan || "Master Weaver Heritage Guild, Varanasi Looms",
-        inventoryStatus: p.stock === 0 ? "OUT_OF_STOCK" : p.stock <= 5 ? "LOW_STOCK" : "IN_STOCK",
-        category: p.category || "banarasi-silk",
-        color: p.color || "Crimson Maroon & Gold",
-        stock: p.stock,
-        sku: p.sku,
-        images: p.images || [],
-        silkMarkCertified: true,
-        zariType: "Tested Pure Gold & Silver Zari",
-        blousePieceIncluded: p.blousePieceIncluded ?? true,
-        sareeLength: p.sareeLength || "5.5 meters saree + 0.8 meter blouse",
-        careInstructions: p.careInstructions || "Dry clean only",
-        specifications: p.specifications || {}
-      }));
-      await Saree.insertMany(sareeDocs);
-      console.log(`\u2705 Seeded ${sareeDocs.length} items into MongoDB [sarees] collection`);
-    }
-    console.log("\u{1F389} [MongoDB Seed] Seeding complete! Database: saree_sansar is ready in Atlas.");
-  } catch (err) {
-    console.warn("\u26A0\uFE0F [MongoDB Seed] Automatic seeding notice:", err);
-  }
-}
+
+// =====================================================
+// SAVE LOCAL DEVELOPMENT URI
+// =====================================================
+
 function saveUriToEnv(uri) {
   try {
     const envPath = path.join(process.cwd(), ".env");
+
     let envContent = "";
+
     if (fs.existsSync(envPath)) {
-      envContent = fs.readFileSync(envPath, "utf-8");
-      if (envContent.includes("MONGO_URI=")) {
-        envContent = envContent.replace(/#?\s*MONGO_URI=.*(\r?\n|$)/g, `MONGO_URI="${uri}"$1`);
+      envContent = fs.readFileSync(
+        envPath,
+        "utf-8"
+      );
+
+      if (/^\s*#?\s*MONGO_URI=/m.test(envContent)) {
+        envContent = envContent.replace(
+          /^\s*#?\s*MONGO_URI=.*$/m,
+          `MONGO_URI="${uri}"`
+        );
       } else {
-        envContent += `
-MONGO_URI="${uri}"
-`;
+        envContent += `\nMONGO_URI="${uri}"\n`;
       }
     } else {
-      envContent = `MONGO_URI="${uri}"
-PORT=3000
-NODE_ENV=development
-`;
+      envContent = `MONGO_URI="${uri}"\n`;
     }
-    fs.writeFileSync(envPath, envContent, "utf-8");
-    console.log("\u{1F4BE} [Config] MONGO_URI saved to .env file successfully.");
-  } catch (err) {
-    console.warn("Could not write to .env file:", err);
+
+    fs.writeFileSync(
+      envPath,
+      envContent,
+      "utf-8"
+    );
+
+    console.log("[Config] Local MONGO_URI saved");
+
+  } catch (error) {
+    console.warn(
+      "[Config] Could not save local .env:",
+      error.message
+    );
   }
 }
+
+// =====================================================
+// MASK DATABASE URI
+// =====================================================
+
 function maskMongoUri(uri) {
   if (!uri) return "";
+
   try {
-    return uri.replace(/:([^@]+)@/, ":\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022@");
+    return uri.replace(
+      /:([^@]+)@/,
+      ":********@"
+    );
   } catch {
-    return uri;
+    return "";
   }
 }
