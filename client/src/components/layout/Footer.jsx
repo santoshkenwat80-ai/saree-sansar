@@ -133,7 +133,7 @@ export const Footer = () => {
               <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-[#f2ce6e] shrink-0 mt-0.5" />
                 <span>
-                  <strong className="text-white">Looms:</strong> Gowshala Road, Champa - 495671 (C.G.)
+                  <strong className="text-white">Location:</strong> Opposite Post Office, Gowshala Road, Champa - 495671 (C.G.)
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -312,13 +312,7 @@ export const Footer = () => {
                 </button>
               </li>
               <li className="pt-1">
-                <Link
-    to="/download"
-    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#f2ce6e] hover:text-white bg-[#3d342f] hover:bg-[#4a3f39] px-2.5 py-1.5 rounded-lg border border-amber-500/30 transition-colors"
-  >
-                  <Download className="w-3.5 h-3.5 text-[#f2ce6e]" />
-                  <span>Download MERN Source (.ZIP)</span>
-                </Link>
+
               </li>
             </ul>
           </div>

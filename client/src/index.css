@@ -1,58 +1,230 @@
+
 @import "tailwindcss";
 
+/* =========================================
+   SAREE SANSAR - GLOBAL THEME
+   Maheshram Dewangan & Bros.
+========================================= */
+
 @theme {
+  /* Fonts */
   --font-serif: "Playfair Display", Georgia, serif;
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+
+  /* Maroon Colors */
   --color-maroon-950: #350812;
   --color-maroon-900: #4a0e1b;
   --color-maroon-800: #6b1426;
   --color-maroon-700: #881930;
   --color-maroon-600: #a7233f;
+
+  /* Gold Colors */
   --color-gold-700: #8b6510;
   --color-gold-600: #a87d19;
   --color-gold-500: #c99726;
   --color-gold-400: #e2b342;
   --color-gold-300: #f2ce6e;
+
+  /* Cream Colors */
   --color-cream-50: #fdfbf7;
   --color-cream-100: #fcf9f2;
   --color-cream-200: #f5eedf;
 }
 
+/* =========================================
+   GLOBAL RESET
+========================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+
   font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+
   background-color: #FAF8F5;
   color: #1c1917;
+
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, .font-serif {
+/* React Root */
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+/* =========================================
+   TYPOGRAPHY
+========================================= */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.font-serif {
   font-family: var(--font-serif);
+  line-height: 1.2;
 }
 
-/* Custom scrollbars */
+p {
+  margin-top: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button,
+input,
+select,
+textarea {
+  font-size: inherit;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+/* =========================================
+   RESPONSIVE MEDIA
+========================================= */
+
+img,
+video,
+iframe {
+  max-width: 100%;
+}
+
+img {
+  display: block;
+}
+
+svg {
+  flex-shrink: 0;
+}
+
+/* =========================================
+   RESPONSIVE LAYOUT HELPERS
+========================================= */
+
+/* Flex and Grid children should shrink correctly */
+
+.flex > *,
+.grid > * {
+  min-width: 0;
+}
+
+/* Prevent long text from breaking layouts */
+
+p,
+h1,
+h2,
+h3,
+h4,
+span {
+  overflow-wrap: break-word;
+}
+
+/* =========================================
+   CUSTOM SCROLLBAR
+========================================= */
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: #fcf9f5;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #d4c5b3;
-  border-radius: 3px;
+  border-radius: 10px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #b89d7d;
 }
 
-/* Modal animation utilities */
+/* Firefox */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d4c5b3 #fcf9f5;
+}
+
+/* =========================================
+   ANIMATIONS
+========================================= */
+
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fade-in {
@@ -63,3 +235,84 @@ h1, h2, h3, .font-serif {
   animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out forwards;
+}
+
+/* =========================================
+   TABLET RESPONSIVE
+   769px - 1024px
+========================================= */
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  body {
+    font-size: 15px;
+  }
+}
+
+/* =========================================
+   MOBILE RESPONSIVE
+   320px - 768px
+========================================= */
+
+@media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body {
+    font-size: 14px;
+  }
+
+  h1 {
+    line-height: 1.2;
+  }
+
+  h2 {
+    line-height: 1.25;
+  }
+
+  img {
+    max-width: 100%;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
+}
+
+/* =========================================
+   SMALL MOBILE
+   320px - 480px
+========================================= */
+
+@media (max-width: 480px) {
+  body {
+    font-size: 13px;
+  }
+}
+
+/* =========================================
+   ACCESSIBILITY
+========================================= */
+
+:focus-visible {
+  outline: 2px solid #c99726;
+  outline-offset: 3px;
+}
+
+/* Reduce animations when requested */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

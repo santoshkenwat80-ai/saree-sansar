@@ -43,38 +43,7 @@ export const Home = () => {
       {
     /* MERN Architecture & Download Banner */
   }
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 sm:-mt-10 relative z-20">
-        <div className="bg-gradient-to-r from-[#20070e] via-[#3a0d18] to-[#20070e] border-2 border-[#d4af37]/60 rounded-2xl p-5 sm:p-6 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-5">
-          <div className="space-y-1.5 text-center md:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-[#d4af37]/20 border border-[#d4af37]/50 text-[#f2ce6e] text-[11px] font-bold uppercase tracking-wider">
-              <span>Pure MERN Stack Application</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            </div>
-            <h3 className="font-serif text-lg sm:text-xl font-bold text-white">
-              Full Stack Source Code: React 19 + Node.js + Express + MongoDB
-            </h3>
-            <p className="text-xs text-stone-300 max-w-2xl leading-relaxed">
-              Yeh website pure MERN stack (MongoDB, Express, React, Node.js) par banayi gayi hai. Aap ready-to-run source code file ko yahan se direct .ZIP download kar sakte hain.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <a
-    href="/saree-sansar-mern-javascript.zip"
-    download="saree-sansar-mern-javascript.zip"
-    className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-[#d4af37] via-[#f2ce6e] to-[#d4af37] text-[#2d0912] font-bold text-xs sm:text-sm hover:brightness-110 shadow-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95"
-  >
-              <Download className="w-4 h-4 text-[#881930]" />
-              <span>Download MERN Project (.ZIP)</span>
-            </a>
-            <Link
-    to="/download"
-    className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-xs sm:text-sm transition-all text-center"
-  >
-              All Packages
-            </Link>
-          </div>
-        </div>
-      </div>
+      
 
       {
     /* 3. Curated Weaving Regions / Categories */
