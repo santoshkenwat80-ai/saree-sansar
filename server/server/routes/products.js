@@ -10,7 +10,7 @@ const router = Router();
 // ==========================================
 // 1. HELPER FUNCTIONS
 // ==========================================
-
+ 
 const createSlug = (text) => {
   return String(text || "saree")
     .toLowerCase()
@@ -458,8 +458,10 @@ router.post("/", async (req, res) => {
   }
 });
 
+
 // ==========================================
-// 5. UPDATE PRODUCT
+// 5. UPDATE PRODUCT - FIXED
+// Supports Product + Saree MongoDB Collections
 // ==========================================
 
 router.put("/:id", async (req, res) => {
@@ -467,12 +469,18 @@ router.put("/:id", async (req, res) => {
     const { id } = req.params;
     const data = req.body || {};
 
-    let existing = (db.products || []).find(
-      p => p.id === id || p.sku === id || p.slug === id
-    );
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required"
+      });
+    }
 
-    let mongoExisting = null;
+    let mongoProduct = null;
+    let mongoSaree = null;
+    let existing = null;
 
+    // Find product in MongoDB collections
     if (isMongoConnected()) {
       const conditions = [
         { id },
@@ -484,38 +492,55 @@ router.put("/:id", async (req, res) => {
         conditions.push({ _id: id });
       }
 
-      mongoExisting = await Product.findOne({
-        $or: conditions
-      }).lean();
+      [mongoProduct, mongoSaree] = await Promise.all([
+        Product.findOne({ $or: conditions }).lean(),
+        Saree.findOne({ $or: conditions }).lean()
+      ]);
 
-      if (!mongoExisting) {
+      // Prefer Product data, otherwise use Saree data
+      existing = mongoProduct || mongoSaree;
+
+      if (!existing) {
         return res.status(404).json({
           success: false,
-          message: "Product not found in MongoDB"
+          message: "Product not found in Product or Saree collection",
+          searchedId: id
         });
       }
 
-      existing = normalizeProduct(mongoExisting);
+      existing = normalizeProduct(existing);
+
+    } else {
+      existing = (db.products || []).find(
+        p =>
+          String(p.id) === id ||
+          String(p.sku) === id ||
+          String(p.slug) === id
+      );
+
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found"
+        });
+      }
     }
 
-    if (!existing) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found"
-      });
-    }
-
+    // Merge old and new data
     const updated = {
       ...existing,
       ...data,
       id: existing.id
     };
 
-    // Generate a unique slug if slug or name changed
+    // Generate unique slug when name or slug changes
     if (data.slug || data.name) {
       const requestedSlug = data.slug || data.name;
 
-      if (createSlug(requestedSlug) !== createSlug(existing.slug)) {
+      if (
+        createSlug(requestedSlug) !==
+        createSlug(existing.slug)
+      ) {
         updated.slug = await makeUniqueSlug(
           requestedSlug,
           existing.sku
@@ -525,6 +550,7 @@ router.put("/:id", async (req, res) => {
       }
     }
 
+    // Validate price and stock
     updated.price = Number(updated.price);
     updated.stock = Number(updated.stock ?? 0);
 
@@ -538,36 +564,77 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+    if (
+      !Number.isFinite(updated.stock) ||
+      updated.stock < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product stock"
+      });
+    }
+
+    // Update MongoDB
     if (isMongoConnected()) {
       const mongoUpdate = { ...updated };
+
       delete mongoUpdate._id;
       delete mongoUpdate.__v;
 
       const sareeUpdate = {
         ...mongoUpdate,
         fabricType: updated.fabric || updated.fabricType,
-        inventoryStatus: updated.stock === 0
-          ? "OUT_OF_STOCK"
-          : updated.stock <= 5
-            ? "LOW_STOCK"
-            : "IN_STOCK"
+        inventoryStatus:
+          updated.stock === 0
+            ? "OUT_OF_STOCK"
+            : updated.stock <= 5
+              ? "LOW_STOCK"
+              : "IN_STOCK"
       };
 
-      await Product.findOneAndUpdate(
-        { _id: mongoExisting._id },
-        { $set: mongoUpdate },
-        { new: true, runValidators: true }
-      );
+      // Update Product collection if product exists
+      if (mongoProduct) {
+        await Product.findOneAndUpdate(
+          { _id: mongoProduct._id },
+          { $set: mongoUpdate },
+          {
+            new: true,
+            runValidators: true
+          }
+        );
+      }
 
-      await Saree.findOneAndUpdate(
-        { sku: existing.sku },
-        { $set: sareeUpdate },
-        { upsert: true, new: true, runValidators: true }
-      );
+      // Update Saree collection if saree exists
+      if (mongoSaree) {
+        await Saree.findOneAndUpdate(
+          { _id: mongoSaree._id },
+          { $set: sareeUpdate },
+          {
+            new: true,
+            runValidators: true
+          }
+        );
+      } else if (mongoProduct && updated.sku) {
+        // Create Saree mirror only when a Product exists
+        await Saree.findOneAndUpdate(
+          { sku: updated.sku },
+          { $set: sareeUpdate },
+          {
+            upsert: true,
+            new: true,
+            runValidators: true
+          }
+        );
+      }
     }
 
-    const index = (db.products || []).findIndex(
-      p => p.id === existing.id
+    // Update local database cache
+    db.products = db.products || [];
+
+    const index = db.products.findIndex(
+      p =>
+        String(p.id) === String(existing.id) ||
+        (existing.sku && p.sku === existing.sku)
     );
 
     if (index !== -1) {
@@ -578,14 +645,14 @@ router.put("/:id", async (req, res) => {
       }
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "Product updated successfully",
       product: updated
     });
 
   } catch (error) {
-    console.error("Update Product Error:", error);
+    console.error("[UPDATE PRODUCT ERROR]", error);
 
     if (error.code === 11000) {
       return res.status(409).json({
@@ -602,6 +669,7 @@ router.put("/:id", async (req, res) => {
     });
   }
 });
+
 
 // ==========================================
 // 6. DELETE PRODUCT
